@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>喵影 - Miao Video</title>
+  <meta name="referrer" content="no-referrer" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600&family=Nunito:wght@400;600&display=swap" rel="stylesheet">
+  <!-- ArtPlayer 视频播放器 -->
+  <script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js"></script>
+  <!-- 视频目录数据：里面声明 const videoList = [...]，见文件末尾说明 -->
+  <script src="avideo.js" type="text/javascript" crossorigin="anonymous"></script>
+  <!-- 专门管理的广告 JS 文件：用时间戳参数强制绕过浏览器缓存。
+       否则改了 as.js 的广告配置后，浏览器可能还在用旧的缓存版本，
+       要连续刷新甚至开 F12 勾选"禁用缓存"才会生效，体验很差。
+       上线到正式环境后，更推荐用服务器 Cache-Control 头 或 文件名带版本号（如 as.abcdef.js）来管理缓存，
+       这里的时间戳写法是给开发/调试阶段用的简单方案。 -->
+  <script>
+    document.write('<script src="as.js?v=' + Date.now() + '" type="text/javascript"><' + '/script>');
+    document.write('<script src="aup.js?v=' + Date.now() + '" type="text/javascript"><' + '/script>');
+  </script>
+  <style>
+    :root {
+      --bg-dark: #02030a;
+      --panel-glass: rgba(8, 10, 26, 0.26);
+      --panel-glass-soft: rgba(10, 14, 35, 0.26);
+      --accent: #f5c84c;
+      --accent-strong: #ffdd55;
+      --accent-pink: #ff7bb0;
+      --accent-blue: #4ac8ff;
+      --accent-green: #65f7c4;
+      --accent-red: #ff5c7a;
+      --text-main: #f5f6ff;
+      --text-sub: #a1a6d0;
+      --border-subtle: rgba(255, 255, 255, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #bg-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 10% 0, #1b2340 0, transparent 55%),
+        radial-gradient(circle at 90% 100%, #211a38 0, transparent 60%),
+        #02030a;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 104px);
+      margin: 44px 80px;
+      padding: 10px 12px;
+      gap: 10px;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: radial-gradient(circle at 0 0, rgba(255,255,255,0.06), transparent 60%),
+                  radial-gradient(circle at 100% 100%, rgba(136,196,255,0.10), transparent 60%),
+                  rgba(0,0,0,0.45);
+      backdrop-filter: blur(14px);
+      box-shadow:
+        0 0 40px rgba(0,0,0,0.9),
+        0 0 120px rgba(136,196,255,0.35);
+    }
+    @media (max-width: 1280px) {
+      .app { margin: 32px 40px; height: calc(100vh - 70px); }
+    }
+    @media (max-width: 900px) {
+      .app { margin: 16px; height: calc(100vh - 32px); }
+    }
+
+    .ripple-target, .btn, .video-item {
+      position: relative;
+      overflow: hidden;
+    }
+    .ripple-circle, .ripple-circle-inner {
+      position: absolute;
+      border-radius: 50%;
+      transform: translate(-50%,-50%) scale(0);
+      background: rgba(255,255,255,0.35);
+      pointer-events: none;
+      animation: ripple-pop .8s ease-out forwards;
+    }
+    .ripple-circle-inner { background: rgba(245,200,76,0.45); animation-duration: .8s; }
+    @keyframes ripple-pop {
+      0%   { transform: translate(-50%,-50%) scale(0);   opacity: .55; }
+      100% { transform: translate(-50%,-50%) scale(1);   opacity: 0;   }
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      border-radius: 18px;
+      background: linear-gradient(120deg, rgba(255,255,255,0.06), rgba(7,10,30,0.90));
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 10px 26px rgba(0,0,0,0.8);
+      min-height: 64px;
+      flex-shrink: 0;
+    }
+    .logo-area { display: flex; align-items: center; gap: 10px; }
+    .miao-box {
+      width: 48px; height: 48px; border-radius: 50%; padding: 4px;
+      background:
+        radial-gradient(circle at 30% 0, rgba(255,255,255,0.65), rgba(255,230,140,1)),
+        radial-gradient(circle at 70% 100%, rgba(255,150,200,0.9), rgba(255,220,130,0.9));
+      box-shadow: 0 0 18px rgba(255,215,130,1), 0 14px 28px rgba(0,0,0,0.95);
+      border: 2px solid rgba(255,238,190,1);
+      display: flex; align-items: center; justify-content: center;
+      animation: miao-float 2.4s ease-in-out infinite;
+    }
+    .miao-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+
+    @keyframes miao-float { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-5px);} }
+    .title-text h1 {
+      margin: 0; font-size: 18px; letter-spacing: 1px;
+      text-shadow: 0 0 12px rgba(255,212,95,0.9), 0 0 26px rgba(255,176,117,0.7);
+    }
+    .header-controls { display: flex; align-items: center; gap: 14px; font-size: 11px; color: var(--text-sub); }
+    .lang-toggle {
+      display: inline-flex; border-radius: 999px; padding: 2px;
+      border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.4);
+      flex-shrink: 0;
+    }
+    .lang-btn {
+      border: none; background: transparent; padding: 3px 10px; border-radius: 999px;
+      color: var(--text-sub); font-size: 11px; cursor: pointer;
+    }
+    .lang-btn.active {
+      background: radial-gradient(circle at 30% 0, rgba(255,255,255,0.28), var(--accent));
+      color: #231b08; font-weight: 600; box-shadow: 0 0 8px rgba(245,200,76,0.8);
+    }
+    .shortcut-hint { max-width: 260px; text-align: right; }
+    .shortcut-toggle-btn {
+      width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(0,0,0,0.35); color: var(--text-main); cursor: pointer; font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    /* ===== 主体两栏布局 8:2 ===== */
+    .layout {
+      display: grid;
+      grid-template-columns: 7fr 3fr;
+      gap: 10px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .panel {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 10px;
+      border-radius: 18px;
+      background: var(--panel-glass-soft);
+      border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 14px 34px rgba(0,0,0,0.85);
+      z-index: 0;
+    }
+
+    /* ---- 左：视频播放面板 ---- */
+    .video-panel { 
+      display: flex;
+      flex-direction: column;
+      /* 恢复为默认的 flex-start，让内部元素默认靠顶靠拢 */
+      justify-content: flex-start; 
+    }
+
+    .video-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .video-info-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 12px; /* 紧随 video-stage，并保持 12px 间距 */
+    }
+
+    .ban-slot {
+      /* 【核心修改】自动撑开上方的剩余空间，实现绝对底对齐 */
+      margin-top: auto; 
+
+      /* 如果你希望它距离上面的 video-info-row 至少有一个保底间距（比如12px），可以加上 */
+      /* margin-top: auto; padding-top: 12px; 或者给个 min-margin，但直接设置 margin-top: auto 通常最完美 */
+      border-radius: 12px;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-sub);
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .ban-slot img {
+      height: 120px;
+      width: 100%;
+      border-radius: 12px;
+    }
+    /* 默认电脑端显示，手机隐藏 */
+    .pc-img {
+      display: block;
+    }
+    .m-img {
+      display: none;
+    }
+
+    #artplayer-app { width: 100%; height: 100%; }
+    .video-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px;
+      background: radial-gradient(circle at 50% 30%, rgba(120,150,255,0.18), transparent 65%), rgba(4,6,18,0.92);
+      color: var(--text-sub);
+      font-size: 13px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .video-placeholder.hidden { display: none; }
+    .video-placeholder .ph-icon { font-size: 34px; opacity: .8; }
+
+    .video-text { min-width: 0; flex: 1 1 auto; }
+    .video-title {
+      margin: 0 0 4px;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-main);
+      overflow-wrap: break-word;
+    }
+    .video-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-sub); }
+
+
+    .chip {
+      padding: 2px 9px; border-radius: 999px; font-size: 11px;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);
+      color: var(--text-sub);
+    }
+    .fav-btn {
+      flex-shrink: 0;
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(0,0,0,0.35);
+      color: var(--text-main);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .fav-btn.active {
+      background: radial-gradient(circle at 30% 0, rgba(255,255,255,0.2), var(--accent-red));
+      color: #fff5f7;
+      box-shadow: 0 0 12px rgba(255,92,122,0.95);
+      border-color: transparent;
+    }
+
+    /* ---- 右：视频列表面板 ---- */
+    .playlist-panel { }
+    .playlist-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .playlist-header h3 { margin: 0; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .playlist-tabs {
+      display: inline-flex; border-radius: 999px; border: 1px solid rgba(255,255,255,0.2);
+      padding: 2px; background: rgba(0,0,0,0.35); font-size: 11px;
+    }
+    .playlist-tab {
+      padding: 4px 10px; border-radius: 999px; cursor: pointer; color: var(--text-sub);
+    }
+    .playlist-tab.active {
+      background: radial-gradient(circle at 30% 0, rgba(255,255,255,0.18), rgba(110,190,255,0.95));
+      color: #02030a; font-weight: 600; box-shadow: 0 0 8px rgba(110,190,255,0.5);
+    }
+
+    .search-inline {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .search-inline-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-sub);
+      flex-wrap: wrap;
+    }
+    .search-input-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .search-input-row input {
+      flex: 1;
+      min-width: 0;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.4);
+      color: var(--text-main);
+      font-size: 12px;
+      outline: none;
+    }
+    .search-input-row input:focus {
+      border-color: var(--accent);
+    }
+    .search-input-row .btn {
+      flex-shrink: 0;
+    }
+
+    .playlist-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+    .playlist-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .playmode-btn, .io-btn {
+      border: none; border-radius: 999px; width: 24px; height: 24px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; background: rgba(0,0,0,0.35); color: var(--text-sub);
+      cursor: pointer; box-shadow: 0 0 8px rgba(0,0,0,0.8); flex-shrink: 0;
+    }
+    .playmode-btn.active {
+      background: radial-gradient(circle at 30% 0, rgba(255,255,255,0.18), rgba(110,190,255,0.95));
+      color: #02030a; box-shadow: 0 0 10px rgba(110,190,255,0.95);
+    }
+    .io-divider { width: 1px; align-self: stretch; background: rgba(255,255,255,0.15); margin: 0 2px; }
+
+    .playlist-main {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      margin-top: 8px;
+      padding-right: 2px;
+    }
+    .playlist-list { position: relative; z-index: 1; }
+
+    .video-item {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      border-radius: 10px;
+      background: rgba(7,11,34,0.86);
+      border: 1px solid rgba(255,255,255,0.06);
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .video-item:hover { background: rgba(26,32,80,0.95); }
+    .video-item.current {
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(245,200,76,0.6);
+    }
+    .video-index { font-size: 11px; color: var(--text-sub); font-weight: 600; text-align: center; width: 18px; }
+    .video-thumb {
+      width: 56px; height: 34px; border-radius: 6px; overflow: hidden;
+      background: rgba(255,255,255,0.06); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: var(--text-sub);
+    }
+    .video-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .video-item-meta { min-width: 0; }
+    .video-item-title {
+      font-size: 12px; color: var(--text-main);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .video-item-sub {
+      font-size: 10px; color: var(--text-sub); margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .video-fav-toggle {
+      flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; border: none;
+      background: rgba(0,0,0,0.3); color: var(--text-sub); font-size: 13px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .video-fav-toggle.active { color: var(--accent-red); }
+
+    /* ---- 通用按钮 ---- */
+    .btn {
+      border: none; border-radius: 999px; padding: 6px 13px;
+      background: radial-gradient(circle at 30% 0, rgba(255,255,255,0.2), var(--accent));
+      color: #231b08; font-size: 12px; font-weight: 500; cursor: pointer;
+      box-shadow: 0 7px 16px rgba(245,200,76,0.75);
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .btn-secondary {
+      background: radial-gradient(circle at 30% 0, rgba(255,255,255,0.05), rgba(80,100,180,0.95));
+      color: var(--text-main); box-shadow: 0 6px 14px rgba(0,0,0,0.8);
+    }
+    .btn:active { transform: scale(0.96); }
+
+    /* ---- toast / 更新提示条 ---- */
+    #toast {
+      position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      padding: 8px 14px; border-radius: 999px; background: rgba(8,10,26,0.96);
+      border: 1px solid rgba(255,255,255,0.15); font-size: 11px; color: var(--text-main);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.9); opacity: 0; pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease; z-index: 1500;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+
+    .update-banner {
+      position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      max-width: calc(100vw - 32px); padding: 10px 14px; border-radius: 16px;
+      background: rgba(8,10,26,0.97); border: 1px solid rgba(245,200,76,0.5);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.9), 0 0 20px rgba(245,200,76,0.35);
+      font-size: 12px; color: var(--text-main); z-index: 1600;
+    }
+    .update-banner .btn { flex-shrink: 0; }
+
+    /* ---- 快捷键弹窗 ---- */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(2,3,10,0.7);
+      display: none; align-items: center; justify-content: center; z-index: 2000;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal-box {
+      width: min(420px, 90vw); background: rgba(10,13,32,0.98);
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 18px; padding: 18px 20px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+    }
+    .modal-box h3 { margin: 0 0 12px; font-size: 15px; }
+    .modal-box ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text-sub); line-height: 1.9; }
+    .modal-close-row { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+    /* ---- 滚动条美化 ---- */
+    .playlist-main::-webkit-scrollbar { width: 6px; }
+    .playlist-main::-webkit-scrollbar-track { background: transparent; }
+    .playlist-main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 999px; }
+
+    /* ===== 移动端适配 ===== */
+    @media (max-width: 860px) {
+      header { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .header-controls { width: 100%; justify-content: space-between; }
+
+      .layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+      }
+
+      html, body {
+        height: auto; min-height: 100%;
+        overflow-y: auto; overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
+      .app { height: auto; min-height: 100vh; overflow: visible; }
+      .panel { min-height: auto; }
+
+      .playlist-main {
+        max-height: 60vh;
+        min-height: 220px;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+    @media (max-width: 480px) {
+      .miao-box {
+        width: 32px; height: 32px; border-radius: 50%; padding: 4px;
+        background:
+          radial-gradient(circle at 30% 0, rgba(255,255,255,0.65), rgba(255,230,140,1)),
+          radial-gradient(circle at 70% 100%, rgba(255,150,200,0.9), rgba(255,220,130,0.9));
+        box-shadow: 0 0 18px rgba(255,215,130,1), 0 14px 28px rgba(0,0,0,0.95);
+        border: 2px solid rgba(255,238,190,1);
+        display: flex; align-items: center; justify-content: center;
+        animation: miao-float 2.4s ease-in-out infinite;
+      }
+      .miao-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+      .app { margin: 8px; padding: 8px 8px 14px; }
+      .video-title { font-size: 15px; }
+      .ban-slot { 
+        height: 70px; border-radius: 12px; 
+      
+        justify-content: center; /* 主轴居中 */
+        align-items: center; /* 交叉轴居中 */
+        margin-bottom: 6px;
+      
+      }
+      .ban-slot img {
+        height: 70px;
+        width: 100%;
+        border-radius: 12px;
+      }
+      .pc-img {
+        display: none;
+      }
+      .m-img {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="app">
+    <header class="ripple-target">
+      <div class="logo-area">
+        <div class="miao-box ripple-target">
+          <img src="images/mao.png" alt="logo" class="miao-img">
+        </div>
+        <div class="title-text">
+          <h1 data-i18n="appTitle">喵影</h1>
+        </div>
+      </div>
+      <div class="header-controls">
+        <div class="lang-toggle ripple-target">
+          <button class="lang-btn active" data-lang="zh">中</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <div class="shortcut-hint" data-i18n="shortcutHint">
+          快捷键：Space 播放/暂停 · ←/→ 快进快退 · ↑/↓ 音量 · N/P 切换视频 · F 收藏
+        </div>
+        <button id="shortcut-toggle-btn" class="shortcut-toggle-btn ripple-target" title="快捷键说明">⌨️</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- 左：视频播放区 -->
+      <section class="panel video-panel ripple-target">
+        <div class="video-stage">
+          <div id="artplayer-app"></div>
+          <div class="video-placeholder" id="video-placeholder">
+            <div class="ph-icon">🎬</div>
+            <div data-i18n="videoPlaceholderHint">从右侧列表选择一个视频吧！</div>
+          </div>
+        </div>
+        <div class="video-info-row">
+          <div class="video-text">
+            <h2 class="video-title" id="video-title" data-i18n="videoPlaceholderTitle">暂无视频播放</h2>
+            <div class="video-meta">
+              <span id="video-actor"></span>
+              <span class="chip" id="video-year" style="display:none;"></span>
+            </div>
+          </div>
+          <button id="fav-btn" class="fav-btn ripple-target" title="收藏">🤍</button>
+        </div>
+        
+        <div class="ban-slot" id="ban-slot">
+            <!-- 电脑端 -->
+            <img class="pc-img" src="images/bb3.png" />
+            <!-- 手机端 -->
+            <img class="m-img" src="images/cc3.png" />
+        </div>
+      </section>
+
+      <!-- 右：视频列表区 -->
+      <section class="panel playlist-panel ripple-target">
+        <div class="playlist-header">
+          <h3><span>📜</span><span data-i18n="playlistTitle">视频列表</span></h3>
+          <div class="playlist-tabs">
+            <div class="playlist-tab active" data-tab="results" data-i18n="tabResults">推荐视频</div>
+            <div class="playlist-tab" data-tab="favorites" data-i18n="tabFavorites">我的收藏</div>
+            <div class="playlist-tab" data-tab="search" data-i18n="tabSearch">视频搜索</div>
+          </div>
+        </div>
+
+        <div class="playlist-bar">
+          <span id="playlist-info" data-i18n="playlistInfoResults">推荐视频列表</span>
+          <div class="playlist-controls">
+            <button class="playmode-btn ripple-target" data-mode="list" title="列表循环">🔁</button>
+            <button class="playmode-btn ripple-target" data-mode="single" title="单曲循环">🔂</button>
+            <button class="playmode-btn ripple-target" data-mode="shuffle" title="随机播放">🔀</button>
+            <span class="io-divider"></span>
+            <button id="export-fav-btn" class="io-btn ripple-target" title="导出收藏">💾</button>
+            <button id="import-fav-btn" class="io-btn ripple-target" title="导入收藏">📂</button>
+            <input type="file" id="import-fav-input" accept="application/json" hidden />
+          </div>
+        </div>
+
+        <div class="search-inline" id="search-inline" style="display:none;">
+          <div class="search-inline-header">
+            <span>🔍</span>
+            <span data-i18n="searchTitle">视频搜索</span>
+            <span class="chip" data-i18n="searchHint">支持片名/演员/语言/地区/类型/年代</span>
+          </div>
+          <div class="search-input-row">
+            <input type="text" id="search-input" data-i18n-placeholder="searchPlaceholder" placeholder="搜索片名/演员/年代/地区/类型/语言" />
+            <button id="search-btn" class="btn ripple-target" data-i18n="searchBtnLabel">搜索</button>
+          </div>
+        </div>
+
+        <div class="playlist-main" id="playlist-main">
+          <div class="playlist-list" id="playlist-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="shortcut-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <h3 data-i18n="shortcutModalTitle">快捷键说明</h3>
+      <ul>
+        <li>Space：播放 / 暂停</li>
+        <li>← / →：快退 / 快进 5 秒</li>
+        <li>↑ / ↓：调高 / 调低音量</li>
+        <li>N / P：下一个 / 上一个视频</li>
+        <li>F：收藏 / 取消收藏当前视频</li>
+        <li>Esc：关闭本说明</li>
+      </ul>
+      <div class="modal-close-row">
+        <button id="shortcut-close" class="btn btn-secondary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+  (function(){
+    'use strict';
+
+    // ===================== 语言包 =====================
+    const LANGS = {
+      zh: {
+        appTitle:"喵影",
+        shortcutHint:"快捷键：Space 播放/暂停 · ←/→ 快进快退 · ↑/↓ 音量 · N/P 切换视频 · F 收藏",
+        shortcutModalTitle:"快捷键说明",
+        videoPlaceholderTitle:"暂无视频播放",
+        videoPlaceholderHint:"从右侧列表选择一个视频吧！",
+        playlistTitle:"视频列表",
+        tabResults:"推荐视频",
+        tabFavorites:"我的收藏",
+        tabSearch:"视频搜索",
+        playlistInfoResults:"推荐视频列表",
+        playlistInfoFavorites:"收藏列表",
+        playlistInfoSearch:"搜索结果（{n} 条）",
+        playlistInfoSearchEmpty:"搜索结果",
+        searchTitle:"视频搜索",
+        searchHint:"支持片名/演员/语言/地区/类型/年代",
+        searchPlaceholder:"搜索片名/演员/年代/地区/类型/语言",
+        searchBtnLabel:"搜索",
+        toastNeedKeyword:"请输入搜索关键词",
+        toastSearching:"搜索中…",
+        toastSearchNoResult:"没有找到匹配的视频",
+        toastSearchLoadError:"搜索数据加载失败，请检查网络或数据文件",
+        toastPlayError:"播放失败，请稍后重试",
+        toastFavAdded:"已收藏",
+        toastFavRemoved:"已取消收藏",
+        toastFavExportEmpty:"收藏夹是空的，没有可导出的内容",
+        toastFavExported:"已导出收藏",
+        toastFavImported:"成功导入 {n} 个收藏",
+        toastFavImportNoNew:"没有新增的收藏（可能都已存在）",
+        toastFavImportError:"导入失败，请检查文件格式",
+        toastPlaymodeList:"播放模式：列表循环",
+        toastPlaymodeSingle:"播放模式：单曲循环",
+        toastPlaymodeShuffle:"播放模式：随机播放",
+        updateAvailable:"发现新版本 {v}，建议更新",
+        updateNowLabel:"去更新",
+        updateDismissLabel:"暂不提醒"
+      },
+      en: {
+        appTitle:"Miao Video",
+        shortcutHint:"Shortcuts: Space Play/Pause · ←/→ Seek · ↑/↓ Volume · N/P Track · F Fav",
+        shortcutModalTitle:"Shortcuts",
+        videoPlaceholderTitle:"No video playing",
+        videoPlaceholderHint:"Pick a video from the list on the right!",
+        playlistTitle:"Video List",
+        tabResults:"Recommended",
+        tabFavorites:"Favorites",
+        tabSearch:"Search",
+        playlistInfoResults:"Recommended Videos",
+        playlistInfoFavorites:"Favorites List",
+        playlistInfoSearch:"Search results ({n})",
+        playlistInfoSearchEmpty:"Search results",
+        searchTitle:"Video Search",
+        searchHint:"Search by title/actor/language/region/category/year",
+        searchPlaceholder:"Search title/actor/year/region/category/language",
+        searchBtnLabel:"Search",
+        toastNeedKeyword:"Please enter a search keyword",
+        toastSearching:"Searching…",
+        toastSearchNoResult:"No matching videos found",
+        toastSearchLoadError:"Failed to load search data, check network or data file",
+        toastPlayError:"Playback failed, please try again",
+        toastFavAdded:"Added to favorites",
+        toastFavRemoved:"Removed from favorites",
+        toastFavExportEmpty:"Favorites list is empty, nothing to export",
+        toastFavExported:"Favorites exported",
+        toastFavImported:"Imported {n} new favorite(s)",
+        toastFavImportNoNew:"No new favorites added (already exist)",
+        toastFavImportError:"Import failed, please check the file format",
+        toastPlaymodeList:"Play mode: repeat all",
+        toastPlaymodeSingle:"Play mode: repeat one",
+        toastPlaymodeShuffle:"Play mode: shuffle",
+        updateAvailable:"New version {v} available",
+        updateNowLabel:"Update",
+        updateDismissLabel:"Not now"
+      }
+    };
+
+    function t(key){
+      const dict = LANGS[state.language] || LANGS.zh;
+      return dict[key] !== undefined ? dict[key] : key;
+    }
+
+    function setLanguage(lang){
+      state.language = (lang === 'en') ? 'en' : 'zh';
+      try{ localStorage.setItem('miao-video-lang', state.language); }catch(e){}
+      document.querySelectorAll('.lang-btn').forEach(btn=>{
+        btn.classList.toggle('active', btn.dataset.lang === state.language);
+      });
+      document.querySelectorAll('[data-i18n]').forEach(el=>{
+        const key = el.getAttribute('data-i18n');
+        el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{
+        const key = el.getAttribute('data-i18n-placeholder');
+        el.setAttribute('placeholder', t(key));
+      });
+      renderPlaylistList();
+      updateVideoInfoUI(state.currentVideo);
+    }
+
+    // ===================== 状态 =====================
+    const state = {
+      language:'zh',
+      recommendedShuffled:[],
+      recommendedRenderedCount:0,
+      favorites:[],
+      searchKeyword:'',
+      searchResults:[],
+      searchRenderedCount:0,
+      currentVideo:null,
+      playContext:{type:'results', index:-1},
+      playModeByTab:{results:'list', favorites:'list', search:'list'}
+    };
+
+    const RECO_BATCH_SIZE = 100;   //推荐视频数量
+    const LIBRARY_STORAGE_KEY = 'miao-video-favorites-v1';
+    const PLAYMODE_STORAGE_KEY = 'miao-video-playmode-tabs';
+
+    // ===================== 搜索数据源配置 =====================
+    // 'js'   : 直接复用 video-list.js 里已经加载好的目录数据（默认，无需额外请求）
+    // 'json' : 搜索时才异步加载一个独立的 JSON 文件，适合以后想把搜索用的数据
+    //          和首页推荐用的数据分开维护、避免首次打开页面就解析全部数据的情况
+    const SEARCH_DATA_SOURCE = 'js'; // 'js' | 'json'
+    const SEARCH_JSON_URL = 'video-list.json'; // 仅当 SEARCH_DATA_SOURCE = 'json' 时生效
+
+    let searchDataCache = null;
+
+    const dom = {};
+    function $(id){ return document.getElementById(id); }
+
+    function setupDOM(){
+      dom.videoStage=$('artplayer-app');
+      dom.videoPlaceholder=$('video-placeholder');
+      dom.videoTitle=$('video-title');
+      dom.videoActor=$('video-actor');
+      dom.videoYear=$('video-year');
+      dom.favBtn=$('fav-btn');
+
+      dom.playlistInfo=$('playlist-info');
+      dom.playlistMain=$('playlist-main');
+      dom.playlistList=$('playlist-list');
+
+      dom.searchInline=$('search-inline');
+      dom.searchInput=$('search-input');
+      dom.searchBtn=$('search-btn');
+
+      dom.exportFavBtn=$('export-fav-btn');
+      dom.importFavBtn=$('import-fav-btn');
+      dom.importFavInput=$('import-fav-input');
+
+      dom.shortcutToggleBtn=$('shortcut-toggle-btn');
+      dom.shortcutModal=$('shortcut-modal');
+      dom.shortcutCloseBtn=$('shortcut-close');
+    }
+
+    // ===================== 工具函数 =====================
+    function showToast(msg){
+      const toast=$('toast'); if(!toast)return;
+      toast.textContent=msg;
+      toast.classList.add('show');
+      setTimeout(()=>toast.classList.remove('show'),2000);
+    }
+
+    function shuffleArray(arr){
+      for(let i=arr.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
+      }
+      return arr;
+    }
+
+    function getVideoLibrary(){
+      if(typeof videoList!=='undefined' && Array.isArray(videoList)) return videoList;
+      if(window.videoList && Array.isArray(window.videoList)) return window.videoList;
+      return [];
+    }
+
+    // ===================== 收藏存储 =====================
+    function saveLibraryToStorage(){
+      try{
+        localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({
+          version:1,
+          savedAt:new Date().toISOString(),
+          favorites: state.favorites
+        }));
+      }catch(e){ console.warn('save favorites failed', e); }
+    }
+
+    function loadLibraryFromStorage(){
+      try{
+        const raw=localStorage.getItem(LIBRARY_STORAGE_KEY);
+        if(!raw){ state.favorites=[]; return; }
+        const data=JSON.parse(raw);
+        state.favorites = Array.isArray(data.favorites) ? data.favorites.filter(v=>v && v.vid) : [];
+      }catch(e){
+        console.warn('load favorites failed', e);
+        state.favorites=[];
+      }
+    }
+
+    function isFavorited(vid){
+      return state.favorites.some(v=>v.vid===vid);
+    }
+
+    function toggleFavorite(video){
+      if(!video || !video.vid) return;
+      console.log('toggleFavorite', video);
+      const idx=state.favorites.findIndex(v=>v.vid===video.vid);
+      if(idx>=0){
+        state.favorites.splice(idx,1);
+        showToast(t('toastFavRemoved'));
+      }else{
+        state.favorites.push({
+          // vid:video.vid, title:video.title||'', actor:video.actor||'',
+          vid:video.vid, title:video.title||'', actor:video.actor||'', region:video.region||'', lange:video.lange||'', category:video.category||'',   // 2024-06-10 新增 category 字段
+          
+          vYear:video.vYear||'', url:video.url||'', cover:video.cover||null
+        });
+        showToast(t('toastFavAdded'));
+      }
+      saveLibraryToStorage();
+      if(state.currentVideo && state.currentVideo.vid===video.vid){
+        updateFavBtnUI(video.vid);
+      }
+      renderPlaylistList();
+    }
+
+    // ===================== 播放模式（分 tab 记忆） =====================
+    function savePlayModeTabs(){
+      try{ localStorage.setItem(PLAYMODE_STORAGE_KEY, JSON.stringify(state.playModeByTab)); }
+      catch(e){ console.warn('save playmode failed', e); }
+    }
+    function loadPlayModeTabs(){
+      try{
+        const raw=localStorage.getItem(PLAYMODE_STORAGE_KEY);
+        if(!raw) return;
+        const data=JSON.parse(raw);
+        ['results','favorites','search'].forEach(k=>{
+          if(data && (data[k]==='single'||data[k]==='shuffle'||data[k]==='list')){
+            state.playModeByTab[k]=data[k];
+          }
+        });
+      }catch(e){ console.warn('load playmode failed', e); }
+    }
+    function getDisplayedTab(){
+      return document.querySelector('.playlist-tab.active')?.dataset.tab || 'results';
+    }
+    function getPlayModeFor(type){
+      return state.playModeByTab[type] || 'list';
+    }
+    function setPlayModeFor(type, mode){
+      state.playModeByTab[type]=mode;
+      savePlayModeTabs();
+    }
+    function setPlaymodeUI(){
+      const tab=getDisplayedTab();
+      const mode=getPlayModeFor(tab);
+      document.querySelectorAll('.playmode-btn').forEach(btn=>{
+        btn.classList.toggle('active', btn.dataset.mode===mode);
+      });
+    }
+
+    // ===================== 推荐视频（本地 video-list.js 曲库） =====================
+    function ensureRecommendedInit(){
+      if(state.recommendedShuffled && state.recommendedShuffled.length) return;
+      state.recommendedShuffled = shuffleArray(getVideoLibrary().slice());
+      state.recommendedRenderedCount = 0;
+    }
+
+    function playRandomRecommended(){
+      ensureRecommendedInit();
+      const lib = state.recommendedShuffled.length ? state.recommendedShuffled : getVideoLibrary();
+      if(!lib.length) return;
+      const video = lib[Math.floor(Math.random()*lib.length)];
+      const idx = state.recommendedShuffled.indexOf(video);
+      // playVideo(video, {type:'results', index: idx});  // 刷新随机列表，而不是直接播放原始列表里的随机视频
+    }
+
+    function updatePlaylistInfoLabel(){
+      const tab=getDisplayedTab();
+      if(tab==='favorites') dom.playlistInfo.textContent=t('playlistInfoFavorites');
+      else if(tab==='search') dom.playlistInfo.textContent = state.searchResults.length
+        ? t('playlistInfoSearch').replace('{n}', state.searchResults.length)
+        : t('playlistInfoSearchEmpty');
+      else dom.playlistInfo.textContent=t('playlistInfoResults');
+    }
+
+    function buildVideoItem(video, indexLabel, context){
+      const item=document.createElement('div');
+      item.className='video-item ripple-target';
+      if(state.currentVideo && state.currentVideo.vid===video.vid){
+        item.classList.add('current');
+      }
+
+      const indexEl=document.createElement('div');
+      indexEl.className='video-index';
+      indexEl.textContent=indexLabel;
+
+      const thumb=document.createElement('div');
+      thumb.className='video-thumb';
+      if(video.cover){
+        const img=document.createElement('img');
+        img.src=video.cover; img.alt='';
+        thumb.appendChild(img);
+      }else{
+        thumb.textContent='🎬';
+      }
+
+      const meta=document.createElement('div');
+      meta.className='video-item-meta';
+      const titleEl=document.createElement('div');
+      titleEl.className='video-item-title';
+      titleEl.textContent=video.title||'';
+      titleEl.title=video.title||'';
+      const subEl=document.createElement('div');
+      subEl.className='video-item-sub';
+      const subParts=[];
+      if(video.vYear) subParts.push(video.vYear+'年');
+      if(video.region) subParts.push(video.region);
+      if(video.lange) subParts.push(video.lange);
+      if(video.category) subParts.push(video.category);   // 2024-06-10 新增 category 字段显示
+      subEl.textContent = subParts.join(' · ');
+      meta.appendChild(titleEl); meta.appendChild(subEl);
+
+      const favToggle=document.createElement('button');
+      favToggle.className='video-fav-toggle';
+      const favActive=isFavorited(video.vid);
+      favToggle.classList.toggle('active', favActive);
+      favToggle.textContent = favActive ? '❤' : '🤍';
+      favToggle.title='收藏';
+      favToggle.addEventListener('click', ev=>{
+        ev.stopPropagation();
+        toggleFavorite(video);
+      });
+
+      item.appendChild(indexEl);
+      item.appendChild(thumb);
+      item.appendChild(meta);
+      item.appendChild(favToggle);
+
+      item.addEventListener('click', ()=>{
+        playVideo(video, context);
+      });
+
+      return item;
+    }
+
+    function renderRecommendedList(){
+      ensureRecommendedInit();
+      if(!state.recommendedRenderedCount){
+        state.recommendedRenderedCount=Math.min(RECO_BATCH_SIZE, state.recommendedShuffled.length);
+      }
+      const wrap=dom.playlistList;
+      wrap.innerHTML='';
+      const list=state.recommendedShuffled.slice(0, state.recommendedRenderedCount);
+      list.forEach((video,idx)=>{
+        wrap.appendChild(buildVideoItem(video, idx+1, {type:'results', index: idx}));
+      });
+      updatePlaylistInfoLabel();
+    }
+
+    function loadMoreRecommended(){
+      ensureRecommendedInit();
+      if(state.recommendedRenderedCount >= state.recommendedShuffled.length) return;
+      state.recommendedRenderedCount = Math.min(
+        state.recommendedRenderedCount + RECO_BATCH_SIZE,
+        state.recommendedShuffled.length
+      );
+      renderRecommendedList();
+    }
+
+    function renderFavoritesList(){
+      const wrap=dom.playlistList;
+      wrap.innerHTML='';
+      state.favorites.forEach((video,idx)=>{
+        wrap.appendChild(buildVideoItem(video, idx+1, {type:'favorites', index: idx}));
+      });
+      updatePlaylistInfoLabel();
+    }
+
+    // ===================== 视频搜索（本地模糊匹配） =====================
+    // 在 title / actor / category / region / lange / vYear 六个字段里
+    // 做不区分大小写的包含匹配，命中任意一个字段即算命中。
+    // 每条数据的可搜索文本只拼接一次、缓存在 __idx 字段上，避免重复计算。
+    async function getSearchLibrary(){
+      if(SEARCH_DATA_SOURCE==='json'){
+        if(searchDataCache) return searchDataCache;
+        try{
+          const res=await fetch(SEARCH_JSON_URL, {cache:'default'});
+          const data=await res.json();
+          searchDataCache=Array.isArray(data) ? data : [];
+        }catch(e){
+          console.error('加载搜索数据失败', e);
+          showToast(t('toastSearchLoadError'));
+          searchDataCache=[];
+        }
+        return searchDataCache;
+      }
+      return getVideoLibrary();
+    }
+
+    function buildSearchIndex(list){
+      list.forEach(v=>{
+        if(v.__idx===undefined){
+          v.__idx=[v.title, v.actor, v.category, v.region, v.lange, v.vYear]
+            .filter(Boolean).join(' ').toLowerCase();
+        }
+      });
+    }
+
+    async function performSearch(keyword){
+      const kw=(keyword||'').trim().toLowerCase();
+      state.searchKeyword=keyword||'';
+      if(!kw){
+        state.searchResults=[];
+        state.searchRenderedCount=0;
+        renderPlaylistList();
+        showToast(t('toastNeedKeyword'));
+        return;
+      }
+      dom.playlistInfo.textContent=t('toastSearching');
+      const lib=await getSearchLibrary();
+      buildSearchIndex(lib);
+      
+      // 过滤结果后执行随机洗牌
+      const filtered = lib.filter(v=>v.__idx && v.__idx.includes(kw));
+      state.searchResults = shuffleArray(filtered);
+      
+      state.searchRenderedCount=Math.min(RECO_BATCH_SIZE, state.searchResults.length);
+      if(getDisplayedTab()==='search') renderPlaylistList();
+      if(!state.searchResults.length) showToast(t('toastSearchNoResult'));
+    }
+    
+
+    function renderSearchResultsList(){
+      const wrap=dom.playlistList;
+      wrap.innerHTML='';
+      const list=state.searchResults.slice(0, state.searchRenderedCount);
+      list.forEach((video,idx)=>{
+        wrap.appendChild(buildVideoItem(video, idx+1, {type:'search', index: idx}));
+      });
+      updatePlaylistInfoLabel();
+    }
+
+    function loadMoreSearchResults(){
+      if(state.searchRenderedCount >= state.searchResults.length) return;
+      state.searchRenderedCount=Math.min(
+        state.searchRenderedCount + RECO_BATCH_SIZE,
+        state.searchResults.length
+      );
+      renderSearchResultsList();
+    }
+
+    function renderPlaylistList(){
+      const tab=getDisplayedTab();
+      if(tab==='favorites') renderFavoritesList();
+      else if(tab==='search') renderSearchResultsList();
+      else renderRecommendedList();
+    }
+
+    function getActiveList(){
+      if(state.playContext.type==='favorites') return state.favorites;
+      if(state.playContext.type==='search') return state.searchResults;
+      return state.recommendedShuffled;
+    }
+
+    // ===================== 播放核心 =====================
+    let art=null;
+
+    // 定义在外层的全局变量，用于记录当前正在播放的视频 ID 和 Storage Key
+    let currentVideoId = '';
+    let currentStorageKey = '';
+
+    // 辅助函数：把 currentTime 设置到 time，并且真正等浏览器原生 'seeked' 事件确认跳转完成后才回调——
+    // 单纯设置 currentTime 是异步生效的，如果紧接着就调用 play()，个别情况下会从跳转前的位置（通常是0）
+    // 开始播放，跳转反而没生效。用 seeked 事件确认，才能保证"跳到记忆点"这件事是可靠的。
+    function seekAndConfirm(artInstance, time, done){
+      const videoEl = artInstance.video;
+      let settled = false;
+      function finish(){
+        if (settled) return;
+        settled = true;
+        if (videoEl) videoEl.removeEventListener('seeked', finish);
+        done();
+      }
+      if (videoEl) videoEl.addEventListener('seeked', finish, { once: true });
+      artInstance.currentTime = time;
+      // 兜底：极少数浏览器/场景下可能不触发 seeked，加个超时保险，避免播放被卡住
+      setTimeout(finish, 800);
+    }
+
+    // 辅助函数：读取指定视频的历史播放进度并跳转（从 ensureArtplayer 中抽出，避免首次创建 / 切换视频两处重复代码）
+    // 注意：必须等视频的 metadata（时长等）真正加载出来之后再判断，否则 artInstance.duration
+    // 可能还是 0 / NaN，导致下面两个判断永远为 false —— 这是"播放记忆 / 跳过片头"看起来偶尔失效的原因之一。
+    // afterApplied：跳转（如果发生）真正确认完成后调用，调用方应该等这个回调再 play()。
+    function restoreSavedProgress(artInstance, storageKey, afterApplied){
+      const done = typeof afterApplied === 'function' ? afterApplied : function(){};
+
+      function apply(){
+        const lastTime = localStorage.getItem(storageKey);
+        const duration = artInstance.duration;
+        if (lastTime) {
+          const parsedTime = parseFloat(lastTime);
+          // 确保视频长度加载出来后再跳转（通常 switch 成功后 duration 可用）
+          if (duration - parsedTime > 5) {
+            artInstance.notice.show = `已自动为您跳转到 ${formatTime(parsedTime)}`;
+            seekAndConfirm(artInstance, parsedTime, done);
+            return;
+          }
+        }
+        if (duration > 30 && artInstance.currentTime < 30) {
+          seekAndConfirm(artInstance, 20, done);
+          return;
+        }
+        done();
+      }
+
+      const videoEl = artInstance.video;
+      // readyState >= 1 (HAVE_METADATA) 表示 duration 已经可用，可以直接判断；
+      // 否则监听一次原生 loadedmetadata 事件，metadata 到位后再执行，绝不会因为时序问题而"什么都没发生"。
+      if (videoEl && videoEl.readyState < 1) {
+        videoEl.addEventListener('loadedmetadata', apply, { once: true });
+      } else {
+        apply();
+      }
+    }
+
+    // 辅助函数：贴片广告播放完毕后，恢复历史进度并开始播放正片。
+    // 统一了"首次创建播放器"和"切换视频"两条路径下贴片广告结束后的收尾逻辑。
+    //
+    // 关键 bug 修复：真正的问题不在"多久之后恢复进度"，而在于——从"切换到新视频"到"我们真正把
+    // currentTime 跳转到记忆点"这段时间里，播放器可能会产生一些 timeupdate 事件（比如内部重置、
+    // 提前触发的 tick），而底部的 art.on('video:timeupdate') 监听器是全程绑定、无差别写入
+    // localStorage 的——一旦这些"提前"的 timeupdate 在我们完成跳转之前，把 0（或很小的值）写入了
+    // 这个视频的存储 key，我们辛辛苦苦读出来的记忆点其实早就被冲掉了。贴片广告开启后，从切换视频到
+    // 真正恢复播放之间的时间窗口被拉长了好几秒，这个"被冲掉"的概率也跟着变大——这就是"开广告后
+    // 记忆功能十有八九失效，关掉广告又基本正常"的真正原因。
+    //
+    // 解决办法：在跳转真正确认完成之前，用 art._progressRestored 这个标记堵住所有的
+    // localStorage 写入（见下方 timeupdate 监听器），跳转确认完成后才放行，从根上杜绝这个窗口期。
+    function resumeAfterPreroll(artInstance, storageKey){
+      restoreSavedProgress(artInstance, storageKey, () => {
+        artInstance._progressRestored = true;
+        artInstance._lastSaveTime = artInstance.currentTime; // 以恢复后的位置为基准，避免和上一个视频的旧基准比较出错
+        artInstance.play().catch(()=>{ /* 部分浏览器要求用户交互后才能自动播放，忽略即可 */ });
+      });
+    }
+
+    function ensureArtplayer(initialUrl, initialPoster, videoId){
+      console.log('当前传入的 VideoID:', videoId);
+      console.log('当前传入的 URL:', initialUrl);
+
+      // 1. 每次调用，无论播放器是否已存在，都必须更新当前视频的标识
+      currentVideoId = videoId;
+      currentStorageKey = `artplayer_last_time_${videoId}`;
+      const switchStorageKey = currentStorageKey; // 闭包快照，防止连续快速切换时串台
+
+      // 2. 如果播放器已经实例化，我们要让贴片广告"和正片加载并行"：
+      //    立刻开始播放贴片广告的同时，立刻调用 switchUrl 在后台加载新视频，
+      //    而不是等 switchUrl 完成后才开始播放广告——那样用户会先看到转圈加载，广告反而是"事后"才出现，
+      //    体验很差。playPreroll 的 waitFor 选项会让广告层一直占位到正片真正加载完成为止，
+      //    如果广告先放完而正片还没加载好，广告层会转为一个简短的"加载中"提示继续占位，
+      //    绝不会露出播放器自己的转圈。
+      if (art) {
+        art._switchingVideo = true; // 抑制这一小段时间内暂停角标广告的展示，避免和贴片广告闪烁打架
+        art._progressRestored = false; // 新视频的记忆点还没恢复，先堵住 timeupdate 写入（见下方说明）
+        art.pause();
+
+        const switchPromise = art
+          .switchUrl(initialUrl || 'video.mp4', initialPoster || 'images/poster.png')
+          .catch(err => { console.error('切换视频源失败:', err); })
+          .finally(() => { art._switchingVideo = false; });
+
+        const resume = () => resumeAfterPreroll(art, switchStorageKey);
+
+        if (window.AdManager && typeof window.AdManager.playPreroll === 'function') {
+          // 贴片广告与 switchPromise 并行启动；广告结束后还会等 switchPromise 一起完成才真正恢复播放
+          window.AdManager.playPreroll(art, resume, { waitFor: switchPromise });
+        } else {
+          switchPromise.then(resume);
+        }
+
+        return art;
+      }
+
+      if(typeof Artplayer==='undefined'){
+        console.error('Artplayer 未加载，请检查网络或 CDN 地址');
+        showToast(t('toastPlayError'));
+        return null;
+      }
+      // ArtPlayer 全局替换默认倍速档位（必须在实例化前设置）
+      Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+      
+      art=new Artplayer({
+        container:'#artplayer-app',
+        // url: initialUrl || 'video.mp4',
+        url: initialUrl || '',
+        poster: initialPoster || 'images/poster.png',
+        volume:0.7,
+        isLive:false,
+        muted:false,
+        // 关闭内置自动播放：改为在下方 'ready' 事件里先播贴片广告，广告结束后再由我们手动 play()，
+        // 这样"首次进入页面自动播放的视频"也会先过一遍贴片广告，和切换视频时的规则保持一致。
+        autoplay:false,
+        pip:false,
+        autoSize:false,
+        autoMini:false,
+        screenshot:false,        
+
+        lock: false, // 移动端显示一个 锁定按钮 ，用于隐藏底部 控制栏
+        fastForward: true, // 移动端添加长按视频快进功能
+        autoOrientation: true,  // 是否在移动端的网页全屏时，根据视频尺寸和视口尺寸，旋转播放器
+        airplay: true, // 显示 airplay 按钮
+
+        loop:false,
+        hotkey:false, // 关闭内置快捷键，统一由外层 document keydown 处理，避免重复触发
+        aspectRatio:true,
+        fullscreen:true,
+        fullscreenWeb:true,
+        miniProgressBar:true,
+        mutex:true,
+        backdrop:true,
+        playsInline:true,
+        theme:'#f5c84c',
+        lang: state.language==='zh' ? 'zh-cn' : 'en',
+
+        setting:false,
+
+        type: 'm3u8',
+
+        flip: true, // 显示视频翻转功能
+        playbackRate: true, // 开启播放速度设置面板
+        playbackRateList: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0],
+
+        controls: [
+          {
+            position: 'right',
+            html: '倍速',
+            selector: [
+                { html: '0.25x', rate: 0.25 },
+                { html: '0.5x', rate: 0.5 },
+                { html: '0.75x', rate: 0.75 },
+                { html: '正常', rate: 1.0 },
+                { html: '1.25x', rate: 1.25 },
+                { html: '1.5x', rate: 1.5 },
+                { html: '2.0x', rate: 2.0 },
+                { html: '3.0x', rate: 3.0 },
+            ],
+            onSelect: function (item) {
+                // alert('选择的倍速：' + item.rate);
+                // console.log('选择的倍速：', item.html);
+                art.playbackRate = item.rate;
+                return item.html;
+            }
+          }
+        ],
+        layers: [
+            {
+                html: `
+                    <style>
+                        .player-logo { 
+                          width: 96px; height: auto;
+                          position: fixed;
+                          top: 10px;
+                          left: 10px;
+                          cursor: pointer;
+                          zIndex: 10;
+                          opacity: 0.6;
+
+                        }
+                        @media (max-width:768px) {
+                            .player-logo { 
+                              width: 48px !important;
+                              position: fixed;
+                              top: 10px;
+                              left: 10px;
+                              cursor: pointer;
+                              zIndex: 10;
+                              opacity: 0.6;
+                            }
+                        }
+                    </style>
+                    <img class="player-logo" src="images/logo.png">
+                `,
+                style: {
+                    position: 'absolute',
+                    top: '20px',
+                    left: '20px',
+                    cursor: 'pointer',
+                    zIndex: 10,
+                    opacity: '0.6',
+                },
+                click: function () {
+                    window.open('https://www.xxooe.com');
+                }
+            }
+        ],
+        // 说明：贴片广告 / 暂停广告已统一迁移到 as.js 的 AdManager 中管理（内容、时长、跳过规则都在
+        // as.js 顶部的 AdConfig 里配置），因此这里不再使用 artplayer-plugin-ads 内置广告插件，
+        // 避免同一次播放出现两套广告逻辑互相打架。如需恢复内置插件，把之前的配置对象放回这个数组即可。
+        plugins: [],
+                
+        moreVideoAttr: {
+          crossOrigin: 'anonymous',
+          preload: 'auto',
+        },
+        buffer: {
+          size: 20,
+          timeout: 40
+        },
+      });
+
+
+      // 快捷键统一交给外层的 document keydown 监听处理（5秒快进快退 / 5%音量步进 /
+      // N,P 切换视频 / F 收藏），避免和 ArtPlayer 自己的 hotkey 重复触发。
+
+      // 新播放器实例的记忆点还没恢复，先堵住 timeupdate 写入（见 resumeAfterPreroll 里的说明）
+      art._progressRestored = false;
+      art._lastSaveTime = 0;
+
+      // 给这个播放器实例绑定"暂停时展示角标广告"的能力（幂等，只需绑定一次）。
+      if (window.AdManager && typeof window.AdManager.attachPauseAd === 'function') {
+        window.AdManager.attachPauseAd(art);
+      }
+
+      // 播放器顶部的防诈骗跑马灯提示（幂等，只需绑定一次；文案在 as.js 的 AdConfig.safetyMarquee 里配置）
+      if (window.AdManager && typeof window.AdManager.attachSafetyMarquee === 'function') {
+        window.AdManager.attachSafetyMarquee(art);
+      }
+
+      // 首次初始化时的 ready 事件：先插播贴片广告，广告结束后再恢复历史进度并开始播放，
+      // 这样第一次进入页面自动加载的视频也会走一遍贴片广告，和"切换视频"的规则保持一致。
+      const initialStorageKey = currentStorageKey; // 闭包快照
+      art.on('ready', () => {
+        if (window.AdManager && typeof window.AdManager.playPreroll === 'function') {
+          window.AdManager.playPreroll(art, () => resumeAfterPreroll(art, initialStorageKey));
+        } else {
+          resumeAfterPreroll(art, initialStorageKey);
+        }
+      });
+
+      // 2. 实时保存当前播放时间
+      art.on('video:timeupdate', () => {
+        // 在我们自己确认"记忆点已经恢复完成"之前，绝不写入 localStorage——
+        // 这正是修复"开了贴片广告记忆功能就失效"的关键：避免任何提前触发的 timeupdate
+        // 把记忆点冲成 0 或很小的值。见 resumeAfterPreroll 里的说明。
+        if (!art._progressRestored) return;
+
+        const currentTime = art.currentTime;
+        if (Math.abs(currentTime - (art._lastSaveTime || 0)) > 1 && art.duration - currentTime > 3) {
+          localStorage.setItem(currentStorageKey, currentTime);
+          art._lastSaveTime = currentTime;
+        }
+      });
+
+      // 3. 视频播放完毕后，清除缓存的播放记录
+      art.on('video:ended', () => {
+        localStorage.removeItem(currentStorageKey);
+        console.log('视频播放完毕，已清除播放记录:', currentStorageKey);
+      });
+
+      // if(art) return art;
+      // return art;
+    }
+
+    // 辅助函数：将秒数格式化为 00:00 格式
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    async function playVideo(video, context){
+      if(!video || !video.url){ showToast(t('toastPlayError')); return; }
+      dom.videoPlaceholder.classList.add('hidden');
+      state.currentVideo=video;
+      if(context) state.playContext=context;
+      updateVideoInfoUI(video);
+      // console.log(video);
+
+      // ensureArtplayer 内部已经完整处理了"切换视频源 → 插播贴片广告 → 恢复历史进度 → 播放"
+      // 的整条链路（含首次创建播放器的情况），这里不需要也不应该再手动 switchUrl/play 一次，
+      // 否则会和贴片广告的暂停/恢复时机打架，甚至导致广告被绕过。
+      const player=ensureArtplayer(video.url, video.cover||'', video.vid);
+      if(!player){
+        showToast(t('toastPlayError'));
+        return;
+      }
+      renderPlaylistList();
+    }
+
+    function updateVideoInfoUI(video){
+      if(!video){
+        dom.videoTitle.textContent=t('videoPlaceholderTitle');
+        dom.videoActor.textContent='';
+        dom.videoYear.style.display='none';
+        dom.favBtn.classList.remove('active');
+        dom.favBtn.textContent='🤍';
+        return;
+      }
+      dom.videoTitle.textContent=video.title||'';
+      dom.videoActor.textContent=video.actor||'';
+      if(video.vYear){
+        dom.videoYear.textContent=video.vYear+'年';
+        dom.videoYear.style.display='inline-block';
+      }else{
+        dom.videoYear.style.display='none';
+      }
+      updateFavBtnUI(video.vid);
+    }
+
+    function updateFavBtnUI(vid){
+      const active=isFavorited(vid);
+      dom.favBtn.classList.toggle('active', active);
+      dom.favBtn.textContent = active ? '❤' : '🤍';
+    }
+
+    function toggleFavoriteCurrent(){
+      if(!state.currentVideo) return;
+      toggleFavorite(state.currentVideo);
+    }
+
+    function playNext(direction){
+      const list=getActiveList();
+      if(!list.length) return;
+      let idx=state.playContext.index ?? -1;
+      if(idx<0 || idx>=list.length) idx=0;
+
+      const mode=getPlayModeFor(state.playContext.type);
+
+      if(mode==='single'){
+        if(art){ art.currentTime=0; art.play().catch(()=>{}); }
+        return;
+      }
+      if(mode==='shuffle'){
+        if(list.length===1){
+          idx=0;
+        }else{
+          let newIdx;
+          do{ newIdx=Math.floor(Math.random()*list.length); }while(newIdx===idx);
+          idx=newIdx;
+        }
+      }else{
+        idx=(idx + (direction==='prev'?-1:1) + list.length) % list.length;
+      }
+      playVideo(list[idx], {type:state.playContext.type, index:idx});   // 播放下一条 / 上一条
+    }
+
+    // ===================== 收藏 导入 / 导出 =====================
+    function exportFavoritesData(){
+      if(!state.favorites.length){ showToast(t('toastFavExportEmpty')); return; }
+      const payload={version:1, savedAt:new Date().toISOString(), favorites:state.favorites};
+      const blob=new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      const date=new Date().toISOString().slice(0,10);
+      a.href=url; a.download='video-favorites-'+date+'.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast(t('toastFavExported'));
+    }
+
+    function handleImportFavoritesFile(e){
+      const file=e.target.files && e.target.files[0];
+      e.target.value='';
+      if(!file) return;
+      const reader=new FileReader();
+      reader.onload=()=>{
+        try{
+          const data=JSON.parse(reader.result);
+          const incoming=Array.isArray(data.favorites) ? data.favorites : (Array.isArray(data) ? data : []);
+          let added=0;
+          incoming.forEach(v=>{
+            if(!v || !v.vid) return;
+            if(!state.favorites.some(f=>f.vid===v.vid)){
+              state.favorites.push({
+                vid:v.vid, title:v.title||'', actor:v.actor||'',
+                vYear:v.vYear||'', url:v.url||'', cover:v.cover||null
+              });
+              added++;
+            }
+          });
+          saveLibraryToStorage();
+          renderPlaylistList();
+          showToast(added>0 ? t('toastFavImported').replace('{n}', added) : t('toastFavImportNoNew'));
+        }catch(err){
+          console.error(err);
+          showToast(t('toastFavImportError'));
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ===================== 背景粒子 / 涟漪效果 =====================
+    let audioLevel=0;
+    function setupParticles(){
+      const canvas=$('bg-canvas'); const ctx=canvas.getContext('2d');
+      function resize(){
+        const dpr=window.devicePixelRatio||1;
+        canvas.width=window.innerWidth*dpr;
+        canvas.height=window.innerHeight*dpr;
+        ctx.setTransform(dpr,0,0,dpr,0,0);
+      }
+      resize(); window.addEventListener('resize', resize);
+      const parts=[];
+      const N=90;
+      for(let i=0;i<N;i++){
+        parts.push({
+          x:Math.random()*window.innerWidth, y:Math.random()*window.innerHeight,
+          vx:(Math.random()-0.5)*0.4, vy:(Math.random()-0.5)*0.4,
+          r:1+Math.random()*2.5, baseR:1+Math.random()*2.5,
+          hue:200+Math.random()*120, a:0.22+Math.random()*0.3
+        });
+      }
+      let mouse={x:window.innerWidth/2, y:window.innerHeight/2};
+      window.addEventListener('mousemove', e=>{ mouse.x=e.clientX; mouse.y=e.clientY; });
+      function tick(){
+        ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
+        const pulse=1+audioLevel*2.2;
+        for(const p of parts){
+          p.x+=p.vx; p.y+=p.vy; p.hue+=0.08;
+          if(p.x<-40)p.x=window.innerWidth+40;
+          if(p.x>window.innerWidth+40)p.x=-40;
+          if(p.y<-40)p.y=window.innerHeight+40;
+          if(p.y>window.innerHeight+40)p.y=-40;
+          const dx=p.x-mouse.x, dy=p.y-mouse.y;
+          const dist=Math.sqrt(dx*dx+dy*dy);
+          const push=Math.max(0,140-dist)/140;
+          p.x+=dx*0.011*push; p.y+=dy*0.011*push;
+          ctx.beginPath();
+          ctx.arc(p.x,p.y,p.baseR*pulse,0,Math.PI*2);
+          const light=Math.min(80,60+audioLevel*40);
+          ctx.fillStyle=`hsla(${p.hue},70%,${light}%,${p.a})`;
+          ctx.fill();
+        }
+        ctx.lineWidth=0.45;
+        for(let i=0;i<parts.length;i++){
+          for(let j=i+1;j<parts.length;j++){
+            const a=parts[i], b=parts[j];
+            const dx=a.x-b.x, dy=a.y-b.y;
+            const d=Math.sqrt(dx*dx+dy*dy);
+            if(d<100){
+              const al=0.10*(1-d/100)*(0.6+audioLevel*1.5);
+              ctx.beginPath();
+              ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+              ctx.strokeStyle=`rgba(120,160,255,${al})`;
+              ctx.stroke();
+            }
+          }
+        }
+        requestAnimationFrame(tick);
+      }
+      tick();
+    }
+
+    function setupRipple(){
+      document.addEventListener('pointerdown', e=>{
+        const target=e.target.closest('.ripple-target, .btn, .video-item');
+        if(!target) return;
+        const rect=target.getBoundingClientRect();
+        const x=e.clientX-rect.left, y=e.clientY-rect.top;
+        const max=Math.max(rect.width, rect.height);
+        const outer=document.createElement('span');
+        outer.className='ripple-circle';
+        outer.style.left=x+'px'; outer.style.top=y+'px';
+        outer.style.width=outer.style.height=(max*2)+'px';
+        const inner=document.createElement('span');
+        inner.className='ripple-circle-inner';
+        inner.style.left=x+'px'; inner.style.top=y+'px';
+        inner.style.width=inner.style.height=(max*1.4)+'px';
+        target.appendChild(outer); target.appendChild(inner);
+        setTimeout(()=>outer.remove(),800);
+        setTimeout(()=>inner.remove(),800);
+      });
+    }
+
+    // ===================== 事件绑定 =====================
+    function setupEvents(){
+      document.querySelectorAll('.lang-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>setLanguage(btn.dataset.lang));
+      });
+
+      document.querySelectorAll('.playlist-tab').forEach(tab=>{
+        tab.addEventListener('click', ()=>{
+          document.querySelectorAll('.playlist-tab').forEach(x=>x.classList.remove('active'));
+          tab.classList.add('active');
+          const tName=tab.dataset.tab;
+          state.playContext.type=tName;
+          state.playContext.index=-1;
+          dom.searchInline.style.display = (tName==='search') ? 'flex' : 'none';
+          renderPlaylistList();
+          setPlaymodeUI();
+        });
+      });
+
+      dom.searchBtn.addEventListener('click', ()=>performSearch(dom.searchInput.value));
+      dom.searchInput.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){ e.preventDefault(); performSearch(dom.searchInput.value); }
+      });
+
+      document.querySelectorAll('.playmode-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const mode=btn.dataset.mode;
+          const tab=getDisplayedTab();
+          setPlayModeFor(tab, mode);
+          setPlaymodeUI();
+          if(mode==='list') showToast(t('toastPlaymodeList'));
+          else if(mode==='single') showToast(t('toastPlaymodeSingle'));
+          else showToast(t('toastPlaymodeShuffle'));
+
+          if(tab==='results' && mode==='shuffle'){
+            state.recommendedShuffled=[];
+            state.recommendedRenderedCount=0;
+            renderRecommendedList();
+            playRandomRecommended();
+          }else if(tab==='search' && mode==='shuffle' && state.searchResults.length){
+            shuffleArray(state.searchResults);
+            state.searchRenderedCount=Math.min(RECO_BATCH_SIZE, state.searchResults.length);
+            renderSearchResultsList();
+            const video=state.searchResults[Math.floor(Math.random()*state.searchResults.length)];
+            // playVideo(video, {type:'search', index: state.searchResults.indexOf(video)});  // 这里不自动播放，避免打断用户的搜索体验
+          }
+        });
+      });
+
+      dom.favBtn.addEventListener('click', toggleFavoriteCurrent);
+
+      dom.exportFavBtn.addEventListener('click', exportFavoritesData);
+      dom.importFavBtn.addEventListener('click', ()=>dom.importFavInput.click());
+      dom.importFavInput.addEventListener('change', handleImportFavoritesFile);
+
+      dom.shortcutToggleBtn.addEventListener('click', ()=>dom.shortcutModal.classList.add('show'));
+      dom.shortcutCloseBtn.addEventListener('click', ()=>dom.shortcutModal.classList.remove('show'));
+      dom.shortcutModal.addEventListener('click', e=>{
+        if(e.target===dom.shortcutModal) dom.shortcutModal.classList.remove('show');
+      });
+
+      dom.playlistMain.addEventListener('scroll', ()=>{
+        const tab=getDisplayedTab();
+        if(dom.playlistMain.scrollTop + dom.playlistMain.clientHeight >= dom.playlistMain.scrollHeight-10){
+          if(tab==='results') loadMoreRecommended();
+          else if(tab==='search') loadMoreSearchResults();
+        }
+      });
+
+      document.addEventListener('keydown', e=>{
+        const tagName=(document.activeElement && document.activeElement.tagName || '').toLowerCase();
+        const typing = tagName==='input' || tagName==='textarea';
+        const shortcutOpen = dom.shortcutModal.classList.contains('show');
+        if(e.key==='Escape'){
+          if(shortcutOpen) dom.shortcutModal.classList.remove('show');
+          return;
+        }
+        if(shortcutOpen || typing) return;
+        if(!art) return;
+        if(e.code==='Space'){ e.preventDefault(); art.toggle(); }
+        else if(e.key==='ArrowRight'){ e.preventDefault(); art.currentTime=Math.min(art.duration||Infinity,(art.currentTime||0)+5); }
+        else if(e.key==='ArrowLeft'){ e.preventDefault(); art.currentTime=Math.max(0,(art.currentTime||0)-5); }
+        else if(e.key==='ArrowUp'){ e.preventDefault(); art.volume=Math.min(1,(art.volume||0)+0.05); }
+        else if(e.key==='ArrowDown'){ e.preventDefault(); art.volume=Math.max(0,(art.volume||0)-0.05); }
+        else if(e.key==='n'||e.key==='N'){ playNext('next'); }
+        else if(e.key==='p'||e.key==='P'){ playNext('prev'); }
+        else if(e.key==='f'||e.key==='F'){ toggleFavoriteCurrent(); }
+      });
+    }
+
+    // ===================== 初始化 =====================
+    function init(){
+      setupDOM();
+      try{ const lg=localStorage.getItem('miao-video-lang'); if(lg) state.language=lg; }catch(e){}
+      loadLibraryFromStorage();
+      loadPlayModeTabs();
+      setupParticles();
+      setupRipple();
+      setupEvents();
+      setLanguage(state.language);
+      renderPlaylistList();
+      setPlaymodeUI();
+      
+      // ensureArtplayer('video.mp4', 'images/poster.png');
+      ensureArtplayer('', 'images/poster.png');
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  })();
+  </script>
+</body>
+</html>
