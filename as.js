@@ -64,7 +64,7 @@
     pauseAd: {
       enabled: true,
       type: 'image', // 'image' | 'video' | 'custom'
-      image: 'images/c1.png',
+      image: 'images/cc1.png',
       link: 'https://music.xxooe.com',
       videoUrl: '',
       customHtml: '<div id="pause-ad-widget"></div>'
