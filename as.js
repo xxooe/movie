@@ -38,7 +38,7 @@
 
     // ---- 广告位 2：屏幕正中间弹窗广告 (popup) ----
     popup: {
-      enabled: true,
+      enabled: false,
       type: 'image', // 'image' | 'custom'
       frequencyHours: 0,
       pc: { image: 'images/cc2.png', link: 'https://music.xxooe.com' },
@@ -49,7 +49,7 @@
     // ---- 广告位 3【新增】：视频播放前贴片广告 (preroll) ----
     preroll: {
       enabled: true,
-      type: 'video', // 'image' | 'video' | 'custom'
+      type: 'image', // 'image' | 'video' | 'custom'
       everySwitch: true,
       minIntervalSeconds: 0,
       skipAfterSeconds: 3,
