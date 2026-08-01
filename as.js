@@ -40,7 +40,7 @@
     popup: {
       enabled: false,
       type: 'image', // 'image' | 'custom'
-      frequencyHours: 0,
+      frequencyHours: 24,
       pc: { image: 'images/cc2.png', link: 'https://music.xxooe.com' },
       mobile: { image: 'images/dd4.png', link: 'https://github.com/jatosi/jatosi.github.io/releases/download/1.10/miaoyin.1.1.0.apk' },
       customHtml: '<div id="popup-ad-widget"></div>'
