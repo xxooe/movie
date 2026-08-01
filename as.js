@@ -64,7 +64,7 @@
     pauseAd: {
       enabled: true,
       type: 'image', // 'image' | 'video' | 'custom'
-      image: 'images/cc1.png',
+      image: 'images/cc3.png',
       link: 'https://music.xxooe.com',
       videoUrl: '',
       customHtml: '<div id="pause-ad-widget"></div>'
@@ -191,7 +191,7 @@
       /* 同上：pointer-events: auto 必须保留，否则暂停广告的关闭按钮点不动 */
       .mv-ad-pause {
         // position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%);max-width: 42%;
-        position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%); width: 70%; min-width: 60%; max-width: 80%;
+        position: absolute;top: 50%;left: 50%;transform: translate(-50%, -50%); width: 50%; min-width: 40%; max-width: 60%;
 
         z-index: 2147483647; background: rgba(10,12,26,0.88); border: 1px solid rgba(255,255,255,0.18);
         border-radius: 10px; padding: 6px; box-shadow: 0 10px 26px rgba(0,0,0,0.6);
