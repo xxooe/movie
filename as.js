@@ -38,7 +38,7 @@
 
     // ---- 广告位 2：屏幕正中间弹窗广告 (popup) ----
     popup: {
-      enabled: false,
+      enabled: true,
       type: 'image', // 'image' | 'custom'
       frequencyHours: 24,
       pc: { image: 'images/cc2.png', link: 'https://music.xxooe.com' },
@@ -64,7 +64,7 @@
     pauseAd: {
       enabled: true,
       type: 'image', // 'image' | 'video' | 'custom'
-      image: 'images/cc3.png',
+      image: 'images/c1.png',
       link: 'https://music.xxooe.com',
       videoUrl: '',
       customHtml: '<div id="pause-ad-widget"></div>'
